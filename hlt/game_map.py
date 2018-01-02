@@ -72,6 +72,25 @@ class Map:
             result.setdefault(entity.calculate_distance_between(foreign_entity), []).append(foreign_entity)
         return result
 
+    #dtrame 1/1/18 - I wanted to just get planets
+    def nearby_planets_by_distance(self, entity):
+        """
+        :param entity: The source entity to find distances from
+        :return: Dict containing all planets with their designated distances
+        :rtype: dict
+        """
+        result = {}
+        for foreign_entity in self.all_planets():
+            if entity == foreign_entity:
+                continue
+            result.setdefault(entity.calculate_distance_between(foreign_entity), []).append(foreign_entity)
+        return result
+
+    #dtrame 1/1/18 - Clear all claims from planets so we can start a new turn with a fresh set of commands
+    def clear_all_claims_on_planets(self):
+        for planet in self.all_planets():
+            planet.reset_claims()
+
     def _link(self):
         """
         Updates all the entities with the correct ship and planet objects

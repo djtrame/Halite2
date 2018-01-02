@@ -148,11 +148,25 @@ class Planet(Entity):
     #adding functionality so a planet can be claimed by a ship
     #so we can avoid sending 3 ships to a planet with only 2 docks
     def claim(self, ship):
-        if not self.is_full:
+        #logging.info("      ship.claim has been called")
+        #logging.info("      Is this planet full? {0}".format(self.is_full()))
+        if not self.is_full():
             self.claims.append(ship)
+        else:
+            logging.info("      Planet id: {0} is trying to add a claim when it already has {1}".format(self.id, len(
+                self.claims)))
+            raise ValueError("A planet should not have more claims than it has docks for!")
 
     def get_claims(self):
         return self.claims
+
+    #call this each turn so ships have to reclaim planets again
+    #but first seed the list with the ships already docked
+    def reset_claims(self):
+        self.claims = []
+
+        for ship in self.all_docked_ships():
+            self.claims.append(ship)
 
     def _link(self, players, planets):
         """
