@@ -1,5 +1,6 @@
 import hlt
 import logging
+import math
 from collections import OrderedDict
 
 def establish_ship_to_ship_distances(my_ships, all_ships, docked, threshold=6):
@@ -28,7 +29,7 @@ def establish_ship_to_ship_distances(my_ships, all_ships, docked, threshold=6):
     for ship in all_ships:
         #if we aren't the owner
         if ship.owner != my_id:
-            #if the ship isn't docked and that's what we want
+            #if the ship isn't docked
             if not docked:
                 if ship.docking_status == ship.docking_status.UNDOCKED:
                     enemy_ships.append(ship)
@@ -64,8 +65,6 @@ def establish_ship_to_ship_distances(my_ships, all_ships, docked, threshold=6):
     # for now if there's at least 1 enemy ship in range we'd just target the 0th element, as that list isn't sorted
     # but being within 6 or so units we aren't terribly worried about spending the time sorting that list
     return results
-
-
 
 game = hlt.Game("Psyqo-v7")
 logging.info("Starting Psyqo-v7")
@@ -115,6 +114,8 @@ while True:
             docked_enemy_ships_counter += 1
 
     logging.info("  Count of docked enemy ships within 500 units of our ships: " + str(docked_enemy_ships_counter))
+
+    ship_angle_adjusted = False
 
     #todo fucking fuck god damnit the first 2 ships can still run into themselves
     for ship in team_ships:
@@ -173,19 +174,29 @@ while True:
                     logging.info("        Planet id: {0} is not owned.".format(planet.id))
                     logging.info("        It has {0} docking spots.".format(planet.num_docking_spots))
                     logging.info("        It currently has {0} claims.".format(len(planet.get_claims())))
-                    if len(planet.get_claims()) < planet.num_docking_spots:
-                        # make a claim
-                        planet.claim(ship)
+                    if turn_number < 4:
+                        if len(planet.get_claims()) < planet.num_docking_spots:
+                            # make a claim
+                            planet.claim(ship)
 
-                        #or just try to dock later in the code
-                        target_object = planet
+                            #or just try to dock later in the code
+                            target_object = planet
 
-                        logging.info("        We are making a claim on this planet and are breaking the planet loop.")
+                            logging.info("        We are making a claim on this planet and are breaking the planet loop.")
 
-                        #break the planet loop
-                        break
+                            #break the planet loop
+                            break
+                        else:
+                            logging.info("        This planet has reached it's maximum claim amount.  Move onto the next planet.")
                     else:
-                        logging.info("        This planet has reached it's maximum claim amount.  Move onto the next planet.")
+                        if len(planet.get_claims()) < 1: #test code, kill it?
+                            # make a claim
+                            planet.claim(ship)
+
+                            # or just try to dock later in the code
+                            target_object = planet
+                            # break the planet loop
+                            break
 
         #if we still don't have a plan, then go towards the nearest docked enemy ship
         #there should be NO situation where all are true:
@@ -213,13 +224,74 @@ while True:
                 else:
                     # if we can't dock, just move towards the object
                     new_position = ship.closest_point_to(target_object)
-                    #trying random bullshit to scoot initial ships away from each other
-                    #new_position.x = len(target_object.get_claims()) * 5
-                    #new_position.y = len(target_object.get_claims()) * 5
+
+                    #trig debug code
+                    if turn_number < 10:
+                        #angle between ship and empty planet
+                        angle_between_ship_and_empty_planet = ship.calculate_angle_between(target_object)
+                        logging.info("        The angle between this ship and planet #{0} is {1}".format(target_object.id,angle_between_ship_and_empty_planet))
+                        angle_between_empty_planet_and_ship = target_object.calculate_angle_between(ship)
+                        logging.info("        The angle between planet #{0} and this ship is {1}".format(target_object.id,
+                                                                                                         angle_between_empty_planet_and_ship))
+                        logging.info("        The center point of this planet is: {0},{1}".format(target_object.x, target_object.y))
+                        logging.info("        The point our ship is navigating towards is: {0},{1}".format(new_position.x, new_position.y))
+                        logging.info("        The radius of the planet is: {0}".format(target_object.radius))
+                        rebased_X_units = new_position.x - target_object.x
+                        rebased_Y_units = target_object.y - new_position.y
+                        logging.info("        The rebased units are: {0},{1}".format(rebased_X_units,rebased_Y_units))
+                        are_we_traveling_up = None
+                        if rebased_Y_units < 0 and angle_between_ship_and_empty_planet > 180:
+                            are_we_traveling_up = True
+                        else:
+                            are_we_traveling_up = False
+
+                        logging.info("        Are we traveling up?: {0}".format(are_we_traveling_up))
+
+
+                        #cos(t) = x/r (isolate for theta).  be sure to include the fudge of 3.
+                        x_over_radius = rebased_X_units / (target_object.radius + 3)
+                        logging.info("        The radius ratio is: {0}".format(x_over_radius))
+                        #t = arccos(x/r)
+                        theta = math.acos(x_over_radius)
+                        logging.info("        Theta is: {0}".format(theta))
+                        theta_degrees = theta * 180 / math.pi
+                        logging.info("        Theta in degrees is: {0}".format(theta_degrees))
+                        #subtract 180 from angle between ship and planet
+                        true_angle = angle_between_ship_and_empty_planet - 180
+                        logging.info("        True angle: {0}".format(true_angle))
+                        #establish an additional angle by adding some radians
+                        gamma = .2
+
+                        if are_we_traveling_up:
+                            gamma *= -1
+
+                        bigger_angle_x = (target_object.radius + 3) * math.cos(theta + gamma)
+                        bigger_angle_y = (target_object.radius + 3) * math.sin(theta + gamma)
+                        new_angle = math.acos(bigger_angle_x / (target_object.radius + 3))
+                        new_angle_degrees = new_angle * 180 / math.pi
+                        logging.info("        The new angle in degrees is: {0}".format(new_angle_degrees))
+
+                        #bug - if we're coming up from the bottom, the theta degrees represents an angle from x to -y.  so if we add to it, we end up moving clockwise.
+                        logging.info("        If we add to this angle a new target position relative to the planet could be: {0},{1}".format(bigger_angle_x, bigger_angle_y))
+
+                        absolute_bigger_angle_x = bigger_angle_x + target_object.x
+                        absolute_bigger_angle_y = bigger_angle_y + target_object.y
+                        logging.info("        A true new spot on the plane (counter clockwise from prior spot on the planet) is: {0},{1}".format(absolute_bigger_angle_x,absolute_bigger_angle_y))
+
+                        if not ship_angle_adjusted:
+                            new_position.x = absolute_bigger_angle_x
+                            new_position.y = absolute_bigger_angle_y
+                            ship_angle_adjusted = True
+
+                        #trying random bullshit to scoot initial ships away from each other
+                        #new_position.x = len(target_object.get_claims()) * 5
+                        #new_position.y = len(target_object.get_claims()) * 5
 
                     navigate_command = ship.navigate(
                         new_position,
                         game_map,
+                        #suggestion by Mandrewoid - didn't work out.  too slow of a start and sometimes 2 ships still crashed
+                        #speed=min(turn_number+1,hlt.constants.MAX_SPEED),
                         speed=int(hlt.constants.MAX_SPEED),
                         ignore_ships=False
                     )
@@ -233,7 +305,7 @@ while True:
                     ship.closest_point_to(target_object),
                     game_map,
                     speed=int(hlt.constants.MAX_SPEED),
-                    ignore_ships=True
+                    ignore_ships=False
                 )
 
                 if navigate_command:
